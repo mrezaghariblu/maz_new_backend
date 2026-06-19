@@ -1,0 +1,259 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model AcademicYear {
+  id                     Int                      @id @default(autoincrement())
+  label                  String                   @db.VarChar(20)
+  startDate              DateTime
+  endDate                DateTime
+  isActive               Boolean                  @default(false)
+  isArchived             Boolean                  @default(false)
+  createdAt              DateTime                 @default(now())
+  auditLogs              AuditLog[]
+  centerStatusHistory    CenterStatusHistory[]
+  personnelStatusHistory PersonnelStatusHistory[]
+  studentEnrollments     StudentEnrollment[]
+  studentStatusHistory   StudentStatusHistory[]
+  userAssignments        UserCenterAssignment[]
+
+  @@map("academic_years")
+}
+
+model Center {
+  id                 Int                    @id @default(autoincrement())
+  name               String                 @db.VarChar(150)
+  code               String                 @unique @db.VarChar(20)
+  type               CenterType
+  province           String                 @db.VarChar(50)
+  city               String                 @db.VarChar(50)
+  address            String?                @db.Text
+  phone              String?                @db.VarChar(20)
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  centerStatuses     CenterStatusHistory[]
+  studentEnrollments StudentEnrollment[]
+  userAssignments    UserCenterAssignment[]
+
+  @@map("centers")
+}
+
+model User {
+  id                     Int                      @id @default(autoincrement())
+  nationalCode           String                   @unique @db.VarChar(10)
+  firstName              String                   @db.VarChar(80)
+  lastName               String                   @db.VarChar(80)
+  gender                 Gender
+  userType               UserType
+  phone                  String?                  @db.VarChar(20)
+  email                  String?                  @db.VarChar(120)
+  birthDate              DateTime?
+  canLogin               Boolean                  @default(false)
+  passwordHash           String?                  @db.VarChar(255)
+  refreshToken           String?                  @db.VarChar(512)
+  isActive               Boolean                  @default(true)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  auditLogsPerformed     AuditLog[]               @relation("AuditPerformedBy")
+  personnelStatusHistory PersonnelStatusHistory[]
+  centerAssignments      UserCenterAssignment[]
+
+  @@index([userType])
+  @@index([nationalCode])
+  @@map("users")
+}
+
+model UserCenterAssignment {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  centerId       Int
+  academicYearId Int
+  assignedAt     DateTime     @default(now())
+  revokedAt      DateTime?
+  note           String?      @db.Text
+  isPrimary      Boolean      @default(true)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  center         Center       @relation(fields: [centerId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, academicYearId])
+  @@index([centerId, academicYearId])
+  @@index([academicYearId], map: "user_center_assignments_academicYearId_fkey")
+  @@map("user_center_assignments")
+}
+
+model Student {
+  id                   Int                    @id @default(autoincrement())
+  nationalCode         String                 @unique @db.VarChar(10)
+  firstName            String                 @db.VarChar(80)
+  lastName             String                 @db.VarChar(80)
+  gender               Gender
+  birthDate            DateTime?
+  parentName           String?                @db.VarChar(160)
+  parentPhone          String?                @db.VarChar(20)
+  address              String?                @db.Text
+  isActive             Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  enrollments          StudentEnrollment[]
+  studentStatusHistory StudentStatusHistory[]
+
+  @@index([nationalCode])
+  @@map("students")
+}
+
+model StudentEnrollment {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  centerId       Int
+  academicYearId Int
+  grade          String       @db.VarChar(20)
+  field          String?      @db.VarChar(60)
+  enrolledAt     DateTime     @default(now())
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  center         Center       @relation(fields: [centerId], references: [id])
+  student        Student      @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId], map: "student_enrollments_academicYearId_fkey")
+  @@index([centerId], map: "student_enrollments_centerId_fkey")
+  @@map("student_enrollments")
+}
+
+model PersonnelStatusType {
+  id          Int                      @id @default(autoincrement())
+  code        String                   @unique @db.VarChar(40)
+  label       String                   @db.VarChar(80)
+  description String?                  @db.Text
+  isActive    Boolean                  @default(true)
+  sortOrder   Int                      @default(0)
+  history     PersonnelStatusHistory[]
+
+  @@map("personnel_status_types")
+}
+
+model StudentStatusType {
+  id        Int                    @id @default(autoincrement())
+  code      String                 @unique @db.VarChar(40)
+  label     String                 @db.VarChar(80)
+  isActive  Boolean                @default(true)
+  sortOrder Int                    @default(0)
+  history   StudentStatusHistory[]
+
+  @@map("student_status_types")
+}
+
+model CenterStatusType {
+  id        Int                   @id @default(autoincrement())
+  code      String                @unique @db.VarChar(40)
+  label     String                @db.VarChar(80)
+  isActive  Boolean               @default(true)
+  sortOrder Int                   @default(0)
+  history   CenterStatusHistory[]
+
+  @@map("center_status_types")
+}
+
+model PersonnelStatusHistory {
+  id             Int                 @id @default(autoincrement())
+  userId         Int
+  statusTypeId   Int
+  academicYearId Int
+  effectiveDate  DateTime
+  endDate        DateTime?
+  note           String?             @db.Text
+  createdAt      DateTime            @default(now())
+  academicYear   AcademicYear        @relation(fields: [academicYearId], references: [id])
+  statusType     PersonnelStatusType @relation(fields: [statusTypeId], references: [id])
+  user           User                @relation(fields: [userId], references: [id])
+
+  @@index([userId, academicYearId])
+  @@index([academicYearId], map: "personnel_status_history_academicYearId_fkey")
+  @@index([statusTypeId], map: "personnel_status_history_statusTypeId_fkey")
+  @@map("personnel_status_history")
+}
+
+model StudentStatusHistory {
+  id             Int               @id @default(autoincrement())
+  studentId      Int
+  statusTypeId   Int
+  academicYearId Int
+  effectiveDate  DateTime
+  endDate        DateTime?
+  note           String?           @db.Text
+  createdAt      DateTime          @default(now())
+  academicYear   AcademicYear      @relation(fields: [academicYearId], references: [id])
+  statusType     StudentStatusType @relation(fields: [statusTypeId], references: [id])
+  student        Student           @relation(fields: [studentId], references: [id])
+
+  @@index([studentId, academicYearId])
+  @@index([academicYearId], map: "student_status_history_academicYearId_fkey")
+  @@index([statusTypeId], map: "student_status_history_statusTypeId_fkey")
+  @@map("student_status_history")
+}
+
+model CenterStatusHistory {
+  id             Int              @id @default(autoincrement())
+  centerId       Int
+  statusTypeId   Int
+  academicYearId Int
+  effectiveDate  DateTime
+  endDate        DateTime?
+  note           String?          @db.Text
+  createdAt      DateTime         @default(now())
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+  center         Center           @relation(fields: [centerId], references: [id])
+  statusType     CenterStatusType @relation(fields: [statusTypeId], references: [id])
+
+  @@index([centerId, academicYearId])
+  @@index([academicYearId], map: "center_status_history_academicYearId_fkey")
+  @@index([statusTypeId], map: "center_status_history_statusTypeId_fkey")
+  @@map("center_status_history")
+}
+
+model AuditLog {
+  id             Int           @id @default(autoincrement())
+  academicYearId Int?
+  performedById  Int
+  entity         String        @db.VarChar(60)
+  entityId       Int
+  action         String        @db.VarChar(20)
+  beforeData     Json?
+  afterData      Json?
+  ipAddress      String?       @db.VarChar(45)
+  createdAt      DateTime      @default(now())
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id])
+  performedBy    User          @relation("AuditPerformedBy", fields: [performedById], references: [id])
+
+  @@index([entity, entityId])
+  @@index([performedById])
+  @@index([createdAt])
+  @@index([academicYearId], map: "audit_logs_academicYearId_fkey")
+  @@map("audit_logs")
+}
+
+enum UserType {
+  SUPERUSER
+  CENTER_MANAGER
+  TEACHER
+  STAFF
+  STUDENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum CenterType {
+  PRIMARY
+  MIDDLE
+  HIGH
+  VOCATIONAL
+}
