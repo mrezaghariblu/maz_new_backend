@@ -21,6 +21,10 @@ model AcademicYear {
   studentEnrollments     StudentEnrollment[]
   studentStatusHistory   StudentStatusHistory[]
   userAssignments        UserCenterAssignment[]
+  classRooms             ClassRoom[]
+  classTeacherAssignments ClassTeacherAssignment[]
+  studentClassAssignments StudentClassAssignment[]
+  promotionDecisions      StudentPromotionDecision[]
 
   @@map("academic_years")
 }
@@ -29,7 +33,7 @@ model AcademicYear {
 /// هر دسته با groupKey مشخص می‌شه و از طریق همون تگ فیلتر/مرتب‌سازی می‌شه.
 /// گروه‌های فعلی: DISTRICT, DISABILITY_TYPE, CENTER_TYPE, EDUCATION_LEVEL,
 /// EMPLOYMENT_TYPE, JOB_POSITION, EDUCATION_DEGREE, MARITAL_STATUS,
-/// EMPLOYMENT_CATEGORY, PHYSICAL_STATUS
+/// EMPLOYMENT_CATEGORY, PHYSICAL_STATUS, FIELD_OF_STUDY, SUBJECT
 model LookupValue {
   id        Int     @id @default(autoincrement())
   groupKey  String  @db.VarChar(40)
@@ -54,6 +58,21 @@ model LookupValue {
   studentDisabilityAssignments StudentDisability[] @relation("StudentDisabilityAssignments")
 
   enrollmentsByEducationLevel StudentEnrollment[] @relation("EnrollmentEducationLevel")
+
+  // مقاطع → پایه‌ها (Grade.educationLevelId)
+  gradesByEducationLevel Grade[] @relation("GradeEducationLevel")
+  // دروس تخصیص‌یافته به کلاس (ClassTeacherAssignment.subjectId)
+  classAssignmentsBySubject ClassTeacherAssignment[] @relation("ClassAssignmentSubject")
+
+  // student relations
+  studentsByEducationLevel    Student[] @relation("StudentEducationLevel")
+  studentsByFieldOfStudy      Student[] @relation("StudentFieldOfStudy")
+  studentsByDistrict          Student[] @relation("StudentDistrict")
+  studentsByBookType          Student[] @relation("StudentBookType")
+  studentsBySpeechDisorder    Student[] @relation("StudentSpeechDisorder")
+  studentGuardianPhysical     Student[] @relation("StudentGuardianPhysical")
+  studentSecondGuardianPhysical Student[] @relation("StudentSecondGuardianPhysical")
+  studentAssistiveDevices     StudentAssistiveDevice[] @relation("StudentAssistiveDevices")
 
   @@unique([groupKey, code])
   @@index([groupKey, sortOrder])
@@ -87,6 +106,8 @@ model Center {
   centerStatuses                     CenterStatusHistory[]
   studentEnrollments                 StudentEnrollment[]
   userAssignments                    UserCenterAssignment[]
+  classRooms                         ClassRoom[]
+  students                           Student[]             @relation("StudentCenter")
 
   @@index([centerTypeId], map: "centers_centerTypeId_fkey")
   @@index([districtId], map: "centers_districtId_fkey")
@@ -163,6 +184,8 @@ model User {
   auditLogsPerformed     AuditLog[]               @relation("AuditPerformedBy")
   personnelStatusHistory PersonnelStatusHistory[]
   centerAssignments      UserCenterAssignment[]
+  classTeacherAssignments ClassTeacherAssignment[]
+  promotionDecisions     StudentPromotionDecision[] @relation("PromotionDecisionBy")
 
   @@index([userType])
   @@index([nationalCode])
@@ -193,27 +216,163 @@ model UserCenterAssignment {
 }
 
 model Student {
-  id                   Int                    @id @default(autoincrement())
-  nationalCode         String                 @unique @db.VarChar(10)
-  firstName            String                 @db.VarChar(80)
-  lastName             String                 @db.VarChar(80)
-  gender               Gender
-  birthDate            DateTime?
-  parentName           String?                @db.VarChar(160)
-  parentPhone          String?                @db.VarChar(20)
-  address              String?                @db.Text
-  physicalStatusId     Int?
-  isActive             Boolean                @default(true)
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-  physicalStatus       LookupValue?           @relation("StudentPhysicalStatus", fields: [physicalStatusId], references: [id])
+  id           Int    @id @default(autoincrement())
+
+  // ─── هویتی ─────────────────────────────────────────────────
+  nationalCode String  @unique @db.VarChar(10)
+  firstName    String  @db.VarChar(80)
+  lastName     String  @db.VarChar(80)
+  gender       Gender
+  birthDay     Int?    @db.TinyInt
+  birthMonth   Int?    @db.TinyInt
+  birthYearShamsi Int? @db.SmallInt
+  address      String? @db.Text
+  homePhone    String? @db.VarChar(20)
+
+  // ─── ولی/قیم قانونی (پدر یا قیم) ──────────────────────────
+  guardianName         String?  @db.VarChar(100)
+  guardianNationalCode String?  @db.VarChar(10)
+  guardianPhone        String?  @db.VarChar(20)
+  guardianPhysicalStatusId Int?   // وضعیت جسمی ولی (از LookupValue گروه DISABILITY_TYPE یا سالم)
+  guardianPhysicalStatus   LookupValue? @relation("StudentGuardianPhysical", fields: [guardianPhysicalStatusId], references: [id])
+
+  // ─── ولی دوم (مادر) ─────────────────────────────────────────
+  secondGuardianName         String? @db.VarChar(100)
+  secondGuardianNationalCode String? @db.VarChar(10)
+  secondGuardianPhone        String? @db.VarChar(20)
+  secondGuardianPhysicalStatusId Int?
+  secondGuardianPhysicalStatus   LookupValue? @relation("StudentSecondGuardianPhysical", fields: [secondGuardianPhysicalStatusId], references: [id])
+
+  // ─── تحصیلی ────────────────────────────────────────────────
+  // educationLevelId و gradeId از LookupValue/Grade — پایه و مقطع
+  // centerId نگه می‌داریم تا بدونیم دانش‌آموز الان در کدام مدرسه‌ست (auto-set)
+  educationLevelId Int?
+  educationLevel   LookupValue? @relation("StudentEducationLevel", fields: [educationLevelId], references: [id])
+  gradeId          Int?
+  grade            Grade?       @relation(fields: [gradeId], references: [id])
+  fieldOfStudyId   Int?         // رشته (فقط متوسطه دوم)
+  fieldOfStudy     LookupValue? @relation("StudentFieldOfStudy", fields: [fieldOfStudyId], references: [id])
+  centerId         Int?         // مدرسه فعلی (auto-set از enrollment)
+  center           Center?      @relation("StudentCenter", fields: [centerId], references: [id])
+  districtId       Int?         // ناحیه (auto-set از مرکز)
+  district         LookupValue? @relation("StudentDistrict", fields: [districtId], references: [id])
+  attendanceType   AttendanceType @default(SCHOOL_PRESENCE)
+  entryDay         Int?   @db.TinyInt   // روز ورود به مدرسه استثنایی (شمسی)
+  entryMonth       Int?   @db.TinyInt
+  entryYear        Int?   @db.SmallInt
+
+  // ─── معلولیت و نیازهای ویژه ────────────────────────────────
+  physicalStatusId Int?
+  physicalStatus   LookupValue? @relation("StudentPhysicalStatus", fields: [physicalStatusId], references: [id])
+  bookTypeId       Int?         // نوع کتاب از LookupValue گروه BOOK_TYPE
+  bookType         LookupValue? @relation("StudentBookType", fields: [bookTypeId], references: [id])
+  needsOccupationalTherapy Boolean @default(false)
+  needsSpeechTherapy       Boolean @default(false)
+  needsPhysiotherapy       Boolean @default(false)
+  speechDisorderId         Int?    // نوع مشکل گفتاری از LookupValue گروه SPEECH_DISORDER
+  speechDisorder           LookupValue? @relation("StudentSpeechDisorder", fields: [speechDisorderId], references: [id])
+
+  // ─── مالی ──────────────────────────────────────────────────
+  bankAccountNumber String? @db.VarChar(40)
+  shabaNumber       String? @db.VarChar(26)
+
+  // ─── موارد خاص ─────────────────────────────────────────────
+  isMartyrFamily     Boolean @default(false) // شاهد و ایثارگر
+  isOrphan           Boolean @default(false) // یتیم
+  isUnderWelfare     Boolean @default(false) // تحت پوشش بهزیستی
+  isUnderRelief      Boolean @default(false) // تحت پوشش کمیته امداد
+  hasNonParentGuardian Boolean @default(false) // سرپرست غیر
+
+  // ─── فعالیت‌ها ──────────────────────────────────────────────
+  willingCultural Boolean @default(false)
+  willingArt      Boolean @default(false)
+  willingSports   Boolean @default(false)
+  willingQuran    Boolean @default(false)
+  achievementsText String? @db.Text // رتبه‌های کسب‌شده (منطقه/استان/کشور) — متن آزاد
+
+  // ─── متفرقه ─────────────────────────────────────────────────
+  notes    String? @db.Text
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ─── Relations ─────────────────────────────────────────────
   disabilities         StudentDisability[]
+  assistiveDevices     StudentAssistiveDevice[]
   enrollments          StudentEnrollment[]
+  classAssignments     StudentClassAssignment[]
+  promotionDecisions   StudentPromotionDecision[]
   studentStatusHistory StudentStatusHistory[]
 
   @@index([nationalCode])
+  @@index([educationLevelId], map: "students_educationLevelId_fkey")
+  @@index([gradeId], map: "students_gradeId_fkey")
+  @@index([centerId], map: "students_centerId_fkey")
+  @@index([districtId], map: "students_districtId_fkey")
   @@index([physicalStatusId], map: "students_physicalStatusId_fkey")
+  @@index([guardianPhysicalStatusId], map: "students_guardianPhysicalStatusId_fkey")
+  @@index([secondGuardianPhysicalStatusId], map: "students_secondGuardianPhysicalStatusId_fkey")
+  @@index([bookTypeId], map: "students_bookTypeId_fkey")
+  @@index([speechDisorderId], map: "students_speechDisorderId_fkey")
+  @@index([fieldOfStudyId], map: "students_fieldOfStudyId_fkey")
   @@map("students")
+}
+
+/// وسایل کمکی دانش‌آموز (چندتایی از LookupValue گروه ASSISTIVE_DEVICE)
+model StudentAssistiveDevice {
+  id               Int         @id @default(autoincrement())
+  studentId        Int
+  assistiveDeviceId Int
+  student          Student     @relation(fields: [studentId], references: [id])
+  assistiveDevice  LookupValue @relation("StudentAssistiveDevices", fields: [assistiveDeviceId], references: [id])
+  createdAt        DateTime    @default(now())
+
+  @@unique([studentId, assistiveDeviceId])
+  @@index([assistiveDeviceId], map: "student_assistive_devices_deviceId_fkey")
+  @@map("student_assistive_devices")
+}
+
+/// تخصیص دانش‌آموز به کلاس (با پایه‌ی خودش در صورت کلاس چندپایه)
+model StudentClassAssignment {
+  id           Int       @id @default(autoincrement())
+  studentId    Int
+  classRoomId  Int
+  gradeId      Int       // پایه‌ی خودِ دانش‌آموز در این کلاس
+  academicYearId Int
+  enrolledAt   DateTime  @default(now())
+  revokedAt    DateTime?
+  student      Student   @relation(fields: [studentId], references: [id])
+  classRoom    ClassRoom @relation(fields: [classRoomId], references: [id])
+  grade        Grade     @relation(fields: [gradeId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, academicYearId])
+  @@index([classRoomId, academicYearId])
+  @@index([gradeId], map: "student_class_assignments_gradeId_fkey")
+  @@index([academicYearId], map: "student_class_assignments_academicYearId_fkey")
+  @@map("student_class_assignments")
+}
+
+/// تصمیم ارتقا/تکرار پایه (خرداد یا شهریور)
+model StudentPromotionDecision {
+  id             Int              @id @default(autoincrement())
+  studentId      Int
+  academicYearId Int
+  decision       PromotionDecision
+  nextGradeId    Int?             // پایه‌ی بعدی (اگه ارتقا)
+  decisionById   Int              // تصمیم‌گیرنده (User)
+  decidedAt      DateTime         @default(now())
+  note           String?          @db.Text
+  student        Student          @relation(fields: [studentId], references: [id])
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+  decisionBy     User             @relation("PromotionDecisionBy", fields: [decisionById], references: [id])
+  nextGrade      Grade?           @relation("PromotionNextGrade", fields: [nextGradeId], references: [id])
+
+  @@unique([studentId, academicYearId])
+  @@index([academicYearId], map: "student_promotion_decisions_academicYearId_fkey")
+  @@index([decisionById], map: "student_promotion_decisions_decisionById_fkey")
+  @@index([nextGradeId], map: "student_promotion_decisions_nextGradeId_fkey")
+  @@map("student_promotion_decisions")
 }
 
 model StudentEnrollment {
@@ -383,6 +542,86 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+/// پایه‌ی تحصیلی — هر پایه به یک مقطع (LookupValue گروه EDUCATION_LEVEL) وصل است.
+/// track مشخص می‌کند این پایه مخصوص چه گروهی از دانش‌آموزان است (یا عمومی).
+/// branch فقط برای متوسطه اول/دوم معنا دارد: عادی در مقابل پیش‌حرفه‌ای/کاردانش خاص.
+model Grade {
+  id               Int           @id @default(autoincrement())
+  educationLevelId Int
+  code             String        @db.VarChar(40)
+  label            String        @db.VarChar(100)
+  track            GradeTrack    @default(NORMAL)
+  branch           GradeBranch   @default(NORMAL)
+  sortOrder        Int           @default(0)
+  isActive         Boolean       @default(true)
+  educationLevel   LookupValue   @relation("GradeEducationLevel", fields: [educationLevelId], references: [id])
+  classGrades      ClassGrade[]
+  students                  Student[]
+  studentClassAssignments   StudentClassAssignment[]
+  promotionDecisionsAsNext  StudentPromotionDecision[] @relation("PromotionNextGrade")
+
+  @@unique([educationLevelId, code])
+  @@index([educationLevelId], map: "grades_educationLevelId_fkey")
+  @@map("grades")
+}
+
+/// کلاس درس — متعلق به یک مرکز در یک سال تحصیلی مشخص.
+/// «نوع کلاس» (تک/چندپایه، تک/چندمعلولیتی) ذخیره نمی‌شود؛ همیشه در لحظه
+/// از روی ClassGrade و معلولیت‌های دانش‌آموزانِ فعلیِ کلاس محاسبه می‌شود.
+model ClassRoom {
+  id             Int                      @id @default(autoincrement())
+  centerId       Int
+  academicYearId Int
+  name           String                   @db.VarChar(100)
+  isActive       Boolean                  @default(true)
+  createdAt      DateTime                 @default(now())
+  center         Center                   @relation(fields: [centerId], references: [id])
+  academicYear   AcademicYear             @relation(fields: [academicYearId], references: [id])
+  classGrades    ClassGrade[]
+  teacherAssignments ClassTeacherAssignment[]
+  studentAssignments StudentClassAssignment[]
+
+  @@index([centerId, academicYearId])
+  @@index([academicYearId], map: "class_rooms_academicYearId_fkey")
+  @@map("class_rooms")
+}
+
+/// پایه‌های یک کلاس (چندبه‌چند) — کلاس می‌تواند چندپایه باشد
+model ClassGrade {
+  id          Int       @id @default(autoincrement())
+  classRoomId Int
+  gradeId     Int
+  classRoom   ClassRoom @relation(fields: [classRoomId], references: [id])
+  grade       Grade     @relation(fields: [gradeId], references: [id])
+
+  @@unique([classRoomId, gradeId])
+  @@index([gradeId], map: "class_grades_gradeId_fkey")
+  @@map("class_grades")
+}
+
+/// تخصیص آموزگار/دبیر به کلاس — subjectId برای دبیرهای متوسطه پر می‌شود
+/// (هر دبیر یک درس مشخص)؛ برای آموزگار ابتدایی که همه‌ی دروس را تدریس
+/// می‌کند خالی می‌ماند.
+model ClassTeacherAssignment {
+  id             Int          @id @default(autoincrement())
+  classRoomId    Int
+  userId         Int
+  academicYearId Int
+  subjectId      Int?
+  assignedAt     DateTime     @default(now())
+  revokedAt      DateTime?
+  classRoom      ClassRoom    @relation(fields: [classRoomId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  subject        LookupValue? @relation("ClassAssignmentSubject", fields: [subjectId], references: [id])
+
+  @@index([classRoomId, academicYearId])
+  @@index([userId], map: "class_teacher_assignments_userId_fkey")
+  @@index([academicYearId], map: "class_teacher_assignments_academicYearId_fkey")
+  @@index([subjectId], map: "class_teacher_assignments_subjectId_fkey")
+  @@map("class_teacher_assignments")
+}
+
 enum UserType {
   SUPERUSER
   CENTER_MANAGER
@@ -400,4 +639,25 @@ enum DisabilitySeverity {
   MILD     // خفیف
   MODERATE // متوسط
   SEVERE   // شدید
+}
+
+enum GradeTrack {
+  NORMAL                // عادی — برای همه
+  INTELLECTUAL_AUTISM   // مخصوص کم‌توان ذهنی و اتیسم
+  SENSORY_MOTOR         // مخصوص گروه حسی-حرکتی
+}
+
+enum GradeBranch {
+  NORMAL     // عادی
+  VOCATIONAL // پیش‌حرفه‌ای (متوسطه اول) / کاردانش خاص (متوسطه دوم)
+}
+
+enum AttendanceType {
+  SCHOOL_PRESENCE // حضور در مدرسه
+  SPECIAL_COMMISSION_18 // کمیسیون خاص بند ۱۸
+}
+
+enum PromotionDecision {
+  PROMOTED    // ارتقا به پایه‌ی بعدی
+  REPEATED    // تکرار پایه
 }

@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 // prisma/seed.ts
 // ============================================================
 // Seed اولیه: سوپریوزرها + انواع وضعیت + سال تحصیلی جاری
@@ -41,14 +40,14 @@ async function seedLookups() {
   ]);
 
   await seedLookupGroup('CENTER_TYPE', [
+    { code: 'OFFICE', label: 'اداره', sortOrder: 10 },
+    { code: 'EXCEPTIONAL_SCHOOL', label: 'مدرسه استثنایی', sortOrder: 20 },
     {
       code: 'COMPREHENSIVE_CENTER',
       label: 'مرکز جامع سنجش، آموزش، توانبخشی و مداخله بهنگام رشدی',
-      sortOrder: 10,
+      sortOrder: 30,
     },
-    { code: 'EXCEPTIONAL_SCHOOL', label: 'مدرسه استثنایی', sortOrder: 20 },
-    { code: 'REGULAR_SCHOOL', label: 'مدرسه عادی', sortOrder: 30 },
-    { code: 'OFFICE', label: 'اداره', sortOrder: 40 },
+    { code: 'REGULAR_SCHOOL', label: 'مدرسه عادی', sortOrder: 40 },
   ]);
 
   await seedLookupGroup('EDUCATION_LEVEL', [
@@ -69,16 +68,40 @@ async function seedLookups() {
   // فاصله‌ی ۱۰تایی عمدی است تا بشه بینشون رکورد جدید جا داد.
   await seedLookupGroup('JOB_POSITION', [
     { code: 'HEAD_OF_OFFICE', label: 'رئیس اداره استثنایی', sortOrder: 10 },
-    { code: 'OFFICE_DEPUTY', label: 'معاون رئیس اداره استثنایی', sortOrder: 20 },
+    {
+      code: 'OFFICE_DEPUTY',
+      label: 'معاون رئیس اداره استثنایی',
+      sortOrder: 20,
+    },
     { code: 'SENIOR_EXPERT', label: 'کارشناس مسئول آموزشی', sortOrder: 30 },
     { code: 'SENIOR_EXPERT', label: 'کارشناس مسئول توانبخشی', sortOrder: 30 },
     { code: 'EXPERT', label: 'کارشناس امور مالی', sortOrder: 40 },
     { code: 'EXPERT', label: 'کارشناس سنجش و ارزشیابی', sortOrder: 40 },
-    { code: 'EXPERT', label: 'کارشناس دانش آموزان آسیب دیده بینایی', sortOrder: 40 },
-    { code: 'EXPERT', label: 'کارشناس دانش آموزان آسیب دیده جسمی و حرکتی', sortOrder: 40 },
-    { code: 'EXPERT', label: 'کارشناس دانش آموزان آسیب دیده شنوایی', sortOrder: 40 },
-    { code: 'EXPERT', label: 'کارشناس دانش آموزان آسیب دیده کم توان ذهنی', sortOrder: 40 },
-    { code: 'EXPERT', label: 'کارشناس امور پرورشی و تربیت بدنی', sortOrder: 40 },
+    {
+      code: 'EXPERT',
+      label: 'کارشناس دانش آموزان آسیب دیده بینایی',
+      sortOrder: 40,
+    },
+    {
+      code: 'EXPERT',
+      label: 'کارشناس دانش آموزان آسیب دیده جسمی و حرکتی',
+      sortOrder: 40,
+    },
+    {
+      code: 'EXPERT',
+      label: 'کارشناس دانش آموزان آسیب دیده شنوایی',
+      sortOrder: 40,
+    },
+    {
+      code: 'EXPERT',
+      label: 'کارشناس دانش آموزان آسیب دیده کم توان ذهنی',
+      sortOrder: 40,
+    },
+    {
+      code: 'EXPERT',
+      label: 'کارشناس امور پرورشی و تربیت بدنی',
+      sortOrder: 40,
+    },
     { code: 'EXPERT', label: 'کارشناس امور بهداشت', sortOrder: 40 },
     { code: 'EXPERT', label: 'کارشناس مشاوره', sortOrder: 40 },
     { code: 'EXPERT', label: 'کارشناس اختلالات یادگیری', sortOrder: 40 },
@@ -142,7 +165,234 @@ async function seedLookups() {
     { code: 'OTHER', label: 'سایر', sortOrder: 80 },
   ]);
 
+  // ---------- رشته‌ی تحصیلی (متوسطه دوم) ----------
+  // سه‌تای عادی seed می‌شن؛ رشته‌های کاردانش خاص رو خودت بعداً از
+  // همین پنل مدیریت مقادیر مرجع (groupKey=FIELD_OF_STUDY) اضافه می‌کنی.
+  await seedLookupGroup('FIELD_OF_STUDY', [
+    { code: 'HUMANITIES', label: 'علوم انسانی', sortOrder: 10 },
+    { code: 'EXPERIMENTAL_SCIENCES', label: 'علوم تجربی', sortOrder: 20 },
+    { code: 'MATH_PHYSICS', label: 'ریاضی فیزیک', sortOrder: 30 },
+  ]);
+
+  // ---------- درس (برای تخصیص دبیر متوسطه به کلاس) ----------
+  // یک لیست شروع‌کننده — از پنل مدیریت مقادیر مرجع (groupKey=SUBJECT)
+  // قابل افزودن/ویرایشه.
+  await seedLookupGroup('SUBJECT', [
+    { code: 'PERSIAN_LITERATURE', label: 'ادبیات فارسی', sortOrder: 10 },
+    { code: 'ARABIC', label: 'عربی', sortOrder: 20 },
+    { code: 'RELIGIOUS_EDUCATION', label: 'دینی', sortOrder: 30 },
+    { code: 'MATH', label: 'ریاضی', sortOrder: 40 },
+    { code: 'SCIENCE', label: 'علوم تجربی', sortOrder: 50 },
+    { code: 'SOCIAL_STUDIES', label: 'مطالعات اجتماعی', sortOrder: 60 },
+    { code: 'ENGLISH', label: 'زبان انگلیسی', sortOrder: 70 },
+    { code: 'PHYSICAL_EDUCATION', label: 'تربیت بدنی', sortOrder: 80 },
+    { code: 'ART', label: 'هنر', sortOrder: 90 },
+    {
+      code: 'VOCATIONAL_SKILLS',
+      label: 'مهارت‌های حرفه‌ای / کاردانش',
+      sortOrder: 100,
+    },
+    { code: 'LIFE_SKILLS', label: 'مهارت‌های زندگی', sortOrder: 110 },
+  ]);
+
+  // ---------- نوع کتاب ----------
+  await seedLookupGroup('BOOK_TYPE', [
+    { code: 'INTELLECTUALLY_DISABLED', label: 'کم‌توان', sortOrder: 10 },
+    { code: 'NORMAL', label: 'عادی', sortOrder: 20 },
+    {
+      code: 'INTELLECTUALLY_DISABLED_LARGE_PRINT',
+      label: 'کم‌توان درشت‌خط',
+      sortOrder: 30,
+    },
+    { code: 'NORMAL_LARGE_PRINT', label: 'عادی درشت‌خط', sortOrder: 40 },
+    { code: 'BRAILLE_NORMAL', label: 'بریل عادی', sortOrder: 50 },
+    {
+      code: 'BRAILLE_INTELLECTUALLY_DISABLED',
+      label: 'بریل کم‌توان',
+      sortOrder: 60,
+    },
+  ]);
+
+  // ---------- وسایل کمکی ----------
+  await seedLookupGroup('ASSISTIVE_DEVICE', [
+    { code: 'GLASSES', label: 'عینک', sortOrder: 10 },
+    { code: 'WALKER', label: 'واکر', sortOrder: 20 },
+    { code: 'WHEELCHAIR', label: 'ویلچر', sortOrder: 30 },
+    {
+      code: 'ELECTRONIC_MAGNIFIER',
+      label: 'درشت‌نمای الکترونیکی',
+      sortOrder: 40,
+    },
+    { code: 'TABLET', label: 'تبلت', sortOrder: 50 },
+    { code: 'HEARING_AID', label: 'سمعک', sortOrder: 60 },
+    { code: 'CRUTCH', label: 'عصا', sortOrder: 70 },
+    { code: 'PROSTHESIS', label: 'پروتز', sortOrder: 80 },
+    { code: 'ORTHOSIS', label: 'اورتوز', sortOrder: 90 },
+    { code: 'OTHER', label: 'سایر', sortOrder: 100 },
+  ]);
+
+  // ---------- مشکلات گفتاری ----------
+  await seedLookupGroup('SPEECH_DISORDER', [
+    { code: 'STUTTERING', label: 'لکنت زبان', sortOrder: 10 },
+    { code: 'APHASIA', label: 'آفازی', sortOrder: 20 },
+    { code: 'DYSARTHRIA', label: 'دیزارتری', sortOrder: 30 },
+    { code: 'ARTICULATION_DISORDER', label: 'اختلال تولید صدا', sortOrder: 40 },
+    { code: 'VOICE_DISORDER', label: 'اختلال صدا', sortOrder: 50 },
+    { code: 'LANGUAGE_DELAY', label: 'تأخیر زبانی', sortOrder: 60 },
+    { code: 'SELECTIVE_MUTISM', label: 'لالی انتخابی', sortOrder: 70 },
+    { code: 'OTHER', label: 'سایر', sortOrder: 80 },
+  ]);
+
   console.log('✅ مقادیر مرجع (LookupValue) seed شدند');
+}
+
+type GradeSeed = {
+  code: string;
+  label: string;
+  sortOrder: number;
+  track?: 'NORMAL' | 'INTELLECTUAL_AUTISM' | 'SENSORY_MOTOR';
+  branch?: 'NORMAL' | 'VOCATIONAL';
+};
+
+async function seedGradesForLevel(
+  educationLevelCode: string,
+  items: GradeSeed[],
+) {
+  const level = await prisma.lookupValue.findUniqueOrThrow({
+    where: {
+      groupKey_code: { groupKey: 'EDUCATION_LEVEL', code: educationLevelCode },
+    },
+  });
+  for (const g of items) {
+    await prisma.grade.upsert({
+      where: {
+        educationLevelId_code: { educationLevelId: level.id, code: g.code },
+      },
+      update: {
+        label: g.label,
+        sortOrder: g.sortOrder,
+        track: g.track ?? 'NORMAL',
+        branch: g.branch ?? 'NORMAL',
+      },
+      create: {
+        educationLevelId: level.id,
+        code: g.code,
+        label: g.label,
+        sortOrder: g.sortOrder,
+        track: g.track ?? 'NORMAL',
+        branch: g.branch ?? 'NORMAL',
+      },
+    });
+  }
+}
+
+async function seedGrades() {
+  // ---------- پیش‌دبستانی ----------
+  await seedGradesForLevel('PRE_SCHOOL', [
+    { code: 'AGE_0_4', label: 'بدو تولد تا ۴ سال', sortOrder: 10 },
+    { code: 'AGE_4_6', label: '۴ تا ۶ سال', sortOrder: 20 },
+    {
+      code: 'READINESS_BASIC',
+      label: 'آمادگی مقدماتی',
+      sortOrder: 30,
+      track: 'INTELLECTUAL_AUTISM',
+    },
+    {
+      code: 'READINESS_ADVANCED',
+      label: 'آمادگی تکمیلی',
+      sortOrder: 40,
+      track: 'INTELLECTUAL_AUTISM',
+    },
+    {
+      code: 'READINESS_SENSORY_MOTOR',
+      label: 'آمادگی (حسی-حرکتی)',
+      sortOrder: 50,
+      track: 'SENSORY_MOTOR',
+    },
+  ]);
+
+  // ---------- ابتدایی ----------
+  await seedGradesForLevel('PRIMARY', [
+    { code: 'FIRST_NORMAL', label: 'اول (عادی)', sortOrder: 10 },
+    {
+      code: 'FIRST_1',
+      label: 'اول ۱',
+      sortOrder: 20,
+      track: 'INTELLECTUAL_AUTISM',
+    },
+    {
+      code: 'FIRST_2',
+      label: 'اول ۲',
+      sortOrder: 30,
+      track: 'INTELLECTUAL_AUTISM',
+    },
+    {
+      code: 'FIRST_3',
+      label: 'اول ۳',
+      sortOrder: 40,
+      track: 'INTELLECTUAL_AUTISM',
+    },
+    { code: 'SECOND', label: 'دوم', sortOrder: 50 },
+    { code: 'THIRD', label: 'سوم', sortOrder: 60 },
+    { code: 'FOURTH', label: 'چهارم', sortOrder: 70 },
+    { code: 'FIFTH', label: 'پنجم', sortOrder: 80 },
+    { code: 'SIXTH', label: 'ششم', sortOrder: 90 },
+  ]);
+
+  // ---------- متوسطه اول ----------
+  // ⚠️ پایه‌های شاخه‌ی پیش‌حرفه‌ای (VOCATIONAL) حدسی‌ان — لطفاً از پنل
+  // مدیریت پایه‌ها اصلاح/تکمیلشون کن.
+  await seedGradesForLevel('FIRST_MIDDLE', [
+    { code: 'SEVENTH', label: 'هفتم', sortOrder: 10 },
+    { code: 'EIGHTH', label: 'هشتم', sortOrder: 20 },
+    { code: 'NINTH', label: 'نهم', sortOrder: 30 },
+    {
+      code: 'PRE_VOCATIONAL_1',
+      label: 'پیش حرفه ای 1 (هفتم)',
+      sortOrder: 40,
+      branch: 'VOCATIONAL',
+    },
+    {
+      code: 'PRE_VOCATIONAL_2',
+      label: 'پیش حرفه ای 2 (هشتم)',
+      sortOrder: 50,
+      branch: 'VOCATIONAL',
+    },
+    {
+      code: 'PRE_VOCATIONAL_3',
+      label: 'پیش حرفه ای 3 (نهم)',
+      sortOrder: 60,
+      branch: 'VOCATIONAL',
+    },
+  ]);
+
+  // ---------- متوسطه دوم ----------
+  // ⚠️ پایه‌های شاخه‌ی کاردانش خاص (VOCATIONAL) هم حدسی‌ان — همین‌طور اصلاح کن.
+  await seedGradesForLevel('SECOND_MIDDLE', [
+    { code: 'TENTH', label: 'دهم', sortOrder: 10 },
+    { code: 'ELEVENTH', label: 'یازدهم', sortOrder: 20 },
+    { code: 'TWELFTH', label: 'دوازدهم', sortOrder: 30 },
+    {
+      code: 'VOCATIONAL_SPECIAL_1',
+      label: 'دهم کاردانش خاص',
+      sortOrder: 40,
+      branch: 'VOCATIONAL',
+    },
+    {
+      code: 'VOCATIONAL_SPECIAL_2',
+      label: 'یازدهم کاردانش خاص',
+      sortOrder: 50,
+      branch: 'VOCATIONAL',
+    },
+    {
+      code: 'VOCATIONAL_SPECIAL_3',
+      label: 'دوازدهم کاردانش خاص',
+      sortOrder: 60,
+      branch: 'VOCATIONAL',
+    },
+  ]);
+
+  console.log('✅ پایه‌های تحصیلی (Grade) seed شدند');
 }
 
 async function main() {
@@ -153,9 +403,9 @@ async function main() {
     where: { id: 1 },
     update: {},
     create: {
-      label: '1404-1405',
-      startDate: new Date('2025-09-22'), // 1 مهر 1403
-      endDate: new Date('2026-09-21'), // 31 شهریور 1404
+      label: '1403-1404',
+      startDate: new Date('2025-09-22'), // 1 مهر 1404
+      endDate: new Date('2026-09-21'), // 31 شهریور 1405
       isActive: true,
       isArchived: false,
     },
@@ -257,6 +507,7 @@ async function main() {
 
   // ─── مقادیر مرجع (نواحی، پست‌ها، انواع معلولیت، ...) ─
   await seedLookups();
+  await seedGrades();
 
   console.log('\n🎉 Seed با موفقیت انجام شد!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

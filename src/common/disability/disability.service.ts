@@ -27,7 +27,7 @@ export class DisabilityService {
     const byId = new Map(rows.map((r) => [r.id, r]));
 
     for (const item of items) {
-      const row = byId.get(item.disabilityTypeId);
+      const row = byId.get(item.disabilityTypeId) as any;
       if (!row) {
         throw new BadRequestException(
           `نوع معلولیت با شناسه ${item.disabilityTypeId} معتبر نیست`,
