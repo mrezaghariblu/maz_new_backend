@@ -16,6 +16,53 @@ import { Response } from 'express';
 import { JwtPayload } from '../auth/auth.service';
 import { Prisma, UserType } from '@prisma/client';
 
+const CENTER_SELECT = {
+  id: true,
+  name: true,
+  code: true,
+  province: true,
+  city: true,
+  address: true,
+  phone: true,
+  bankAccountNumber: true,
+  shabaNumber: true,
+  establishedYear: true,
+  preSchoolCode: true,
+  primaryCode: true,
+  firstMiddleCode: true,
+  firstMiddleVocationalCode: true,
+  secondMiddleSpecialVocationalCode: true,
+  secondMiddleCode: true,
+  isActive: true,
+  createdAt: true,
+  centerType: true,
+  district: true,
+  _count: {
+    select: {
+      userAssignments: { where: { revokedAt: null } },
+      studentEnrollments: true,
+    },
+  },
+  centerStatuses: {
+    orderBy: { effectiveDate: 'desc' as const },
+    take: 1,
+    include: { statusType: true },
+  },
+  // مدیر فعلی مرکز — برای نمایش نام و تماس در لیست (بدون تکرار داده)
+  userAssignments: {
+    where: {
+      revokedAt: null,
+      isPrimary: true,
+      user: { userType: UserType.CENTER_MANAGER },
+      academicYear: { isActive: true },
+    },
+    take: 1,
+    select: {
+      user: { select: { id: true, firstName: true, lastName: true, phone: true } },
+    },
+  },
+} satisfies Prisma.CenterSelect;
+
 @Injectable()
 export class CentersService {
   constructor(
@@ -39,27 +86,17 @@ export class CentersService {
         orderBy,
         skip,
         take,
-        include: {
-          _count: {
-            select: {
-              userAssignments: { where: { revokedAt: null } },
-              studentEnrollments: true,
-            },
-          },
-          centerStatuses: {
-            orderBy: { effectiveDate: 'desc' },
-            take: 1,
-            include: { statusType: true },
-          },
-        },
+        select: CENTER_SELECT,
       }),
       this.prisma.center.count({
         where: scopeWhere as Prisma.CenterWhereInput,
       }),
     ]);
 
+    const shaped = data.map((c) => this.withManagerInfo(c));
+
     return {
-      data,
+      data: shaped,
       total,
       page: dto.page ?? 1,
       pageSize: take,
@@ -71,6 +108,8 @@ export class CentersService {
     const center = await this.prisma.center.findUnique({
       where: { id },
       include: {
+        centerType: true,
+        district: true,
         userAssignments: {
           where: { revokedAt: null },
           include: {
@@ -79,6 +118,7 @@ export class CentersService {
                 id: true,
                 firstName: true,
                 lastName: true,
+                phone: true,
                 userType: true,
               },
             },
@@ -126,7 +166,10 @@ export class CentersService {
       staffCount: c._count.userAssignments,
       studentCount: c._count.studentEnrollments,
       currentStatus: c.centerStatuses[0]?.statusType?.label ?? '—',
-      typeLabel: this.typeLabel(c.type),
+      typeLabel: c.centerType?.label ?? '—',
+      districtLabel: c.district?.label ?? '—',
+      managerName: c.managerName ?? '—',
+      managerPhone: c.managerPhone ?? '—',
       isActiveLabel: c.isActive ? 'فعال' : 'غیرفعال',
     }));
     await this.excelExport.export({
@@ -138,13 +181,15 @@ export class CentersService {
     });
   }
 
-  private typeLabel(t: string) {
-    const m: Record<string, string> = {
-      PRIMARY: 'دبستان',
-      MIDDLE: 'متوسطه اول',
-      HIGH: 'دبیرستان',
-      VOCATIONAL: 'هنرستان',
+  // نام و تلفن مدیر فعلی مرکز را به‌جای فیلد جدا، از روی
+  // userAssignments استخراج می‌کند (بدون تکرار داده در دیتابیس)
+  private withManagerInfo(center: any) {
+    const manager = center.userAssignments?.[0]?.user ?? null;
+    const { userAssignments, ...rest } = center;
+    return {
+      ...rest,
+      managerName: manager ? `${manager.firstName} ${manager.lastName}` : null,
+      managerPhone: manager?.phone ?? null,
     };
-    return m[t] ?? t;
   }
 }

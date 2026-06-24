@@ -25,47 +25,151 @@ model AcademicYear {
   @@map("academic_years")
 }
 
-model Center {
-  id                 Int                    @id @default(autoincrement())
-  name               String                 @db.VarChar(150)
-  code               String                 @unique @db.VarChar(20)
-  type               CenterType
-  province           String                 @db.VarChar(50)
-  city               String                 @db.VarChar(50)
-  address            String?                @db.Text
-  phone              String?                @db.VarChar(20)
-  isActive           Boolean                @default(true)
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  centerStatuses     CenterStatusHistory[]
-  studentEnrollments StudentEnrollment[]
-  userAssignments    UserCenterAssignment[]
+/// جدول واحد برای تمام مقادیر مرجع/ثابت سیستم (به‌جای enum‌های پراکنده)
+/// هر دسته با groupKey مشخص می‌شه و از طریق همون تگ فیلتر/مرتب‌سازی می‌شه.
+/// گروه‌های فعلی: DISTRICT, DISABILITY_TYPE, CENTER_TYPE, EDUCATION_LEVEL,
+/// EMPLOYMENT_TYPE, JOB_POSITION, EDUCATION_DEGREE, MARITAL_STATUS,
+/// EMPLOYMENT_CATEGORY, PHYSICAL_STATUS
+model LookupValue {
+  id        Int     @id @default(autoincrement())
+  groupKey  String  @db.VarChar(40)
+  code      String  @db.VarChar(40)
+  label     String  @db.VarChar(150)
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
 
+  centersByType     Center[] @relation("CenterType")
+  centersByDistrict Center[] @relation("CenterDistrict")
+
+  usersByDistrict           User[] @relation("UserDistrict")
+  usersByEmploymentType     User[] @relation("UserEmploymentType")
+  usersByJobPosition        User[] @relation("UserJobPosition")
+  usersByEducationDegree    User[] @relation("UserEducationDegree")
+  usersByMaritalStatus      User[] @relation("UserMaritalStatus")
+  usersByEmploymentCategory User[] @relation("UserEmploymentCategory")
+  usersByPhysicalStatus     User[] @relation("UserPhysicalStatus")
+  userDisabilityAssignments    UserDisability[]    @relation("UserDisabilityAssignments")
+
+  studentsByPhysicalStatus Student[] @relation("StudentPhysicalStatus")
+  studentDisabilityAssignments StudentDisability[] @relation("StudentDisabilityAssignments")
+
+  enrollmentsByEducationLevel StudentEnrollment[] @relation("EnrollmentEducationLevel")
+
+  @@unique([groupKey, code])
+  @@index([groupKey, sortOrder])
+  @@map("lookup_values")
+}
+
+model Center {
+  id                                 Int                    @id @default(autoincrement())
+  name                               String                 @db.VarChar(150)
+  code                               String                 @unique @db.VarChar(20)
+  centerTypeId                       Int
+  province                           String                 @db.VarChar(50)
+  city                               String                 @db.VarChar(50)
+  districtId                         Int?
+  address                            String?                @db.Text
+  phone                              String?                @db.VarChar(20)
+  bankAccountNumber                  String?                @db.VarChar(40)
+  shabaNumber                        String?                @db.VarChar(26)
+  establishedYear                    Int?                   @db.SmallInt
+  preSchoolCode                      String?                @db.VarChar(20)
+  primaryCode                        String?                @db.VarChar(20)
+  firstMiddleCode                    String?                @db.VarChar(20)
+  firstMiddleVocationalCode          String?                @db.VarChar(20)
+  secondMiddleSpecialVocationalCode  String?                @db.VarChar(20)
+  secondMiddleCode                   String?                @db.VarChar(20)
+  isActive                           Boolean                @default(true)
+  createdAt                          DateTime               @default(now())
+  updatedAt                          DateTime               @updatedAt
+  centerType                         LookupValue            @relation("CenterType", fields: [centerTypeId], references: [id])
+  district                           LookupValue?           @relation("CenterDistrict", fields: [districtId], references: [id])
+  centerStatuses                     CenterStatusHistory[]
+  studentEnrollments                 StudentEnrollment[]
+  userAssignments                    UserCenterAssignment[]
+
+  @@index([centerTypeId], map: "centers_centerTypeId_fkey")
+  @@index([districtId], map: "centers_districtId_fkey")
   @@map("centers")
 }
 
 model User {
   id                     Int                      @id @default(autoincrement())
   nationalCode           String                   @unique @db.VarChar(10)
+  personnelCode          String?                  @unique @db.VarChar(20)
   firstName              String                   @db.VarChar(80)
   lastName               String                   @db.VarChar(80)
+  fatherName             String?                  @db.VarChar(80)
   gender                 Gender
   userType               UserType
   phone                  String?                  @db.VarChar(20)
   email                  String?                  @db.VarChar(120)
   birthDate              DateTime?
+  birthDay               Int?                     @db.TinyInt
+  birthMonth             Int?                     @db.TinyInt
+  birthYearShamsi         Int?                    @db.SmallInt
+
+  // اشتغال
+  employmentTypeId       Int?
+  jobPositionId          Int?
+  employmentCategoryId   Int?
+  requiredHours          Decimal?                 @db.Decimal(5, 2)
+  nonRequiredHours       Decimal?                 @db.Decimal(5, 2)
+
+  // تاریخچه ورود و سابقه (شمسی)
+  exceptionalEntryDay    Int?                     @db.TinyInt
+  exceptionalEntryMonth  Int?                     @db.TinyInt
+  exceptionalEntryYear   Int?                     @db.SmallInt
+  serviceRecordYears     Int?                     @db.SmallInt
+  serviceRecordMonths    Int?                     @db.TinyInt
+  serviceRecordDays      Int?                     @db.TinyInt
+
+  // اطلاعات فردی و تحصیلی
+  maritalStatusId        Int?
+  educationDegreeId      Int?
+  fieldOfStudy           String?                  @db.VarChar(100)
+  isargariStatus         String?                  @db.VarChar(150)
+  physicalStatusId       Int?
+
+  // تماس و بانک
+  address                String?                  @db.Text
+  bankAccountNumber      String?                  @db.VarChar(40)
+  shadMobileNumber       String?                  @db.VarChar(20)
+  shadUsername           String?                  @db.VarChar(60)
+  districtId              Int?
+
+  // داوری مسابقات
+  willingJudgeCultural   Boolean                  @default(false)
+  willingJudgeQuranEtrat Boolean                  @default(false)
+  willingJudgeSports     Boolean                  @default(false)
+  judgeCertificateField  String?                  @db.VarChar(100)
+
   canLogin               Boolean                  @default(false)
   passwordHash           String?                  @db.VarChar(255)
   refreshToken           String?                  @db.VarChar(512)
   isActive               Boolean                  @default(true)
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
+
+  district               LookupValue?             @relation("UserDistrict", fields: [districtId], references: [id])
+  employmentType         LookupValue?             @relation("UserEmploymentType", fields: [employmentTypeId], references: [id])
+  jobPosition            LookupValue?             @relation("UserJobPosition", fields: [jobPositionId], references: [id])
+  educationDegree        LookupValue?             @relation("UserEducationDegree", fields: [educationDegreeId], references: [id])
+  maritalStatus          LookupValue?             @relation("UserMaritalStatus", fields: [maritalStatusId], references: [id])
+  employmentCategory     LookupValue?             @relation("UserEmploymentCategory", fields: [employmentCategoryId], references: [id])
+  physicalStatus         LookupValue?             @relation("UserPhysicalStatus", fields: [physicalStatusId], references: [id])
+  disabilities           UserDisability[]
+
   auditLogsPerformed     AuditLog[]               @relation("AuditPerformedBy")
   personnelStatusHistory PersonnelStatusHistory[]
   centerAssignments      UserCenterAssignment[]
 
   @@index([userType])
   @@index([nationalCode])
+  @@index([personnelCode])
+  @@index([jobPositionId], map: "users_jobPositionId_fkey")
+  @@index([employmentTypeId], map: "users_employmentTypeId_fkey")
+  @@index([districtId], map: "users_districtId_fkey")
   @@map("users")
 }
 
@@ -98,32 +202,73 @@ model Student {
   parentName           String?                @db.VarChar(160)
   parentPhone          String?                @db.VarChar(20)
   address              String?                @db.Text
+  physicalStatusId     Int?
   isActive             Boolean                @default(true)
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
+  physicalStatus       LookupValue?           @relation("StudentPhysicalStatus", fields: [physicalStatusId], references: [id])
+  disabilities         StudentDisability[]
   enrollments          StudentEnrollment[]
   studentStatusHistory StudentStatusHistory[]
 
   @@index([nationalCode])
+  @@index([physicalStatusId], map: "students_physicalStatusId_fkey")
   @@map("students")
 }
 
 model StudentEnrollment {
-  id             Int          @id @default(autoincrement())
-  studentId      Int
-  centerId       Int
-  academicYearId Int
-  grade          String       @db.VarChar(20)
-  field          String?      @db.VarChar(60)
-  enrolledAt     DateTime     @default(now())
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-  center         Center       @relation(fields: [centerId], references: [id])
-  student        Student      @relation(fields: [studentId], references: [id])
+  id               Int          @id @default(autoincrement())
+  studentId        Int
+  centerId         Int
+  academicYearId   Int
+  educationLevelId Int?
+  grade            String       @db.VarChar(20)
+  field            String?      @db.VarChar(60)
+  enrolledAt       DateTime     @default(now())
+  academicYear     AcademicYear @relation(fields: [academicYearId], references: [id])
+  center           Center       @relation(fields: [centerId], references: [id])
+  student          Student      @relation(fields: [studentId], references: [id])
+  educationLevel   LookupValue? @relation("EnrollmentEducationLevel", fields: [educationLevelId], references: [id])
 
   @@unique([studentId, academicYearId])
   @@index([academicYearId], map: "student_enrollments_academicYearId_fkey")
   @@index([centerId], map: "student_enrollments_centerId_fkey")
+  @@index([educationLevelId], map: "student_enrollments_educationLevelId_fkey")
   @@map("student_enrollments")
+}
+
+/// معلولیت‌های Assign‌شده به پرسنل — یک نفر می‌تونه چند معلولیت داشته باشه.
+/// تگ «چندمعلولیتی» نیازی به ستون جدا نداره: همیشه می‌شه با
+/// COUNT(*) > 1 GROUP BY userId محاسبه‌ش کرد (در سرویس/کوئری لیست).
+model UserDisability {
+  id               Int                 @id @default(autoincrement())
+  userId           Int
+  disabilityTypeId Int
+  severity         DisabilitySeverity?
+  autismLevel      Int?                @db.TinyInt // فقط برای اوتیسم: ۱، ۲ یا ۳
+  createdAt        DateTime            @default(now())
+  user             User                @relation(fields: [userId], references: [id])
+  disabilityType   LookupValue         @relation("UserDisabilityAssignments", fields: [disabilityTypeId], references: [id])
+
+  @@unique([userId, disabilityTypeId])
+  @@index([disabilityTypeId], map: "user_disabilities_disabilityTypeId_fkey")
+  @@map("user_disabilities")
+}
+
+/// معلولیت‌های Assign‌شده به دانش‌آموز — همون منطق UserDisability
+model StudentDisability {
+  id               Int                 @id @default(autoincrement())
+  studentId        Int
+  disabilityTypeId Int
+  severity         DisabilitySeverity?
+  autismLevel      Int?                @db.TinyInt // فقط برای اوتیسم: ۱، ۲ یا ۳
+  createdAt        DateTime            @default(now())
+  student          Student             @relation(fields: [studentId], references: [id])
+  disabilityType   LookupValue         @relation("StudentDisabilityAssignments", fields: [disabilityTypeId], references: [id])
+
+  @@unique([studentId, disabilityTypeId])
+  @@index([disabilityTypeId], map: "student_disabilities_disabilityTypeId_fkey")
+  @@map("student_disabilities")
 }
 
 model PersonnelStatusType {
@@ -251,9 +396,8 @@ enum Gender {
   FEMALE
 }
 
-enum CenterType {
-  PRIMARY
-  MIDDLE
-  HIGH
-  VOCATIONAL
+enum DisabilitySeverity {
+  MILD     // خفیف
+  MODERATE // متوسط
+  SEVERE   // شدید
 }

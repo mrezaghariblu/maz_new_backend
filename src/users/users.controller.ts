@@ -1,11 +1,12 @@
-// src/users/users.controller.ts (نسخه کامل)
+// src/users/users.controller.ts
 import {
   Body, Controller, Delete, Get, Param,
-  Patch, Post, Res, UseGuards, UseInterceptors,
+  Patch, Post, Put, Res, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { CenterScopeGuard } from '../auth/guards/center-scope.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/auth.service';
@@ -14,7 +15,7 @@ import { SmartFilterDto, ExcelExportDto } from '../common/filters/smart-filter.d
 import { UsersService }     from './users.service';
 import {
   CreateUserDto, UpdateUserDto, ChangePasswordDto,
-  AssignCenterDto, TransferDto,
+  AssignCenterDto, TransferDto, SetDisabilitiesDto,
 } from './dto/user.dto';
 import { UserType } from '@prisma/client';
 
@@ -39,11 +40,16 @@ export class UsersController {
   @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
   findOne(@Param('id') id: string) { return this.svc.findOne(+id); }
 
+  // ثبت پرسنل: فقط سوپریوزر و مدیر مرکز — مدیر مرکز فقط برای مرکز خودش
+  // (CenterScopeGuard از body.centerId استفاده می‌کند؛ بررسی دقیق‌تر در سرویس انجام می‌شود)
   @Post()
-  @Roles(UserType.SUPERUSER)
+  @UseGuards(CenterScopeGuard)
+  @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
   @UseInterceptors(AuditInterceptor)
   @AuditEntity('User') @AuditAction('CREATE')
-  create(@Body() dto: CreateUserDto) { return this.svc.create(dto); }
+  create(@Body() dto: CreateUserDto, @CurrentUser() user: JwtPayload) {
+    return this.svc.create(dto, user);
+  }
 
   @Patch(':id')
   @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
@@ -51,6 +57,15 @@ export class UsersController {
   @AuditEntity('User') @AuditAction('UPDATE')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.svc.update(+id, dto);
+  }
+
+  // جایگزینی کامل لیست معلولیت‌های یک پرسنل
+  @Put(':id/disabilities')
+  @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
+  @UseInterceptors(AuditInterceptor)
+  @AuditEntity('UserDisability') @AuditAction('UPDATE')
+  setDisabilities(@Param('id') id: string, @Body() dto: SetDisabilitiesDto) {
+    return this.svc.setDisabilities(+id, dto);
   }
 
   @Patch(':id/password')
