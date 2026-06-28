@@ -70,12 +70,12 @@ export class AnalyticsService {
       this.prisma.student.count({ where: { isActive: true } }),
       this.prisma.user.count({ where: { isActive: true, userType: { not: 'STUDENT' } } }),
       this.prisma.center.count({ where: { isActive: true } }),
-      this.prisma.classRoom.count({ where: { isActive: true } }),
+      this.prisma.classRoom.count(),
       academicYearId
         ? this.prisma.student.count({
-            where: { isActive: true, classAssignments: { none: { academicYearId, revokedAt: null } } },
+            where: { isActive: true, classAssignments: { none: { academicYearId: academicYearId!, revokedAt: null } } },
           })
-        : 0,
+        : Promise.resolve(0),
       this.prisma.studentDisability.groupBy({
         by: ['disabilityTypeId'],
         _count: { studentId: true },
@@ -168,10 +168,10 @@ export class AnalyticsService {
     ] = await Promise.all([
       this.prisma.student.count({ where: { centerId, isActive: true } }),
       academicYearId
-        ? this.prisma.student.count({ where: { centerId, isActive: true, classAssignments: { none: { academicYearId, revokedAt: null } } } })
-        : 0,
+        ? this.prisma.student.count({ where: { centerId, isActive: true, classAssignments: { none: { academicYearId: academicYearId!, revokedAt: null } } } })
+        : Promise.resolve(0),
       this.prisma.userCenterAssignment.count({ where: { centerId, revokedAt: null, user: { isActive: true } } }),
-      this.prisma.classRoom.count({ where: { centerId, isActive: true } }),
+      this.prisma.classRoom.count({ where: { centerId } }),
       this.prisma.studentDisability.groupBy({
         by: ['disabilityTypeId'],
         _count: { studentId: true },

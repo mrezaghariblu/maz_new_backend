@@ -28,6 +28,16 @@ export class ClassesController {
     return this.svc.findAll(user, centerId ? +centerId : undefined, academicYearId ? +academicYearId : undefined);
   }
 
+  @Post('list')
+  @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
+  async findAllPost(
+    @Body() body: { centerId?: number; academicYearId?: number; page?: number; pageSize?: number },
+    @CurrentUser() user: JwtPayload,
+  ) {
+    const data = await this.svc.findAll(user, body.centerId, body.academicYearId);
+    return { data, total: data.length };
+  }
+
   @Get(':id')
   @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
   findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
