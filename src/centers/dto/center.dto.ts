@@ -9,6 +9,7 @@ import {
 export class CreateCenterDto {
   @IsString() @Length(2, 150) name: string;
   @IsString() @Length(2, 20) code: string;
+  @IsString() @Length(2, 50) organizationCode: string;
   @IsInt() centerTypeId: number;
   @IsString() @Length(2, 50) province: string;
   @IsString() @Length(2, 50) city: string;
@@ -32,6 +33,7 @@ export class UpdateCenterDto {
   @IsOptional() @IsString() @Length(2, 150) name?: string;
   @IsOptional() @IsInt() centerTypeId?: number;
   @IsOptional() @IsString() province?: string;
+  @IsOptional() @IsString() @Length(2, 50) organizationCode?: string;
   @IsOptional() @IsString() city?: string;
   @IsOptional() @IsInt() districtId?: number;
   @IsOptional() @IsString() address?: string;

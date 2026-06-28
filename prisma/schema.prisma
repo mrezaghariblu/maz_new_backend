@@ -83,6 +83,7 @@ model Center {
   id                                 Int                    @id @default(autoincrement())
   name                               String                 @db.VarChar(150)
   code                               String                 @unique @db.VarChar(20)
+  organizationCode                   String                 @unique
   centerTypeId                       Int
   province                           String                 @db.VarChar(50)
   city                               String                 @db.VarChar(50)

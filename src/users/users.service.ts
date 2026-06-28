@@ -18,6 +18,7 @@ import {
   AssignCenterDto,
   TransferDto,
   SetDisabilitiesDto,
+  SetCanLoginDto,
 } from './dto/user.dto';
 import { JwtPayload } from '../auth/auth.service';
 import { Prisma, UserType } from '@prisma/client';
@@ -91,7 +92,6 @@ export class UsersService {
     private disabilityService: DisabilityService,
   ) {}
 
-  // ─── List ──────────────────────────────────────────────────
   async findAll(dto: SmartFilterDto, requester: JwtPayload) {
     const { where, skip, take } = this.filterBuilder.build(dto);
 
@@ -105,8 +105,6 @@ export class UsersService {
             ],
           };
 
-    // مرتب‌سازی پیش‌فرض: اولویت پست سازمانی → نام خانوادگی
-    // (اگر کاربر مرتب‌سازی صریح خواسته باشد همان اعمال می‌شود)
     const orderBy: Prisma.UserOrderByWithRelationInput[] = dto.sort
       ? [{ [dto.sort.field]: dto.sort.direction } as Prisma.UserOrderByWithRelationInput]
       : [{ jobPosition: { sortOrder: 'asc' } }, { lastName: 'asc' }];
@@ -119,17 +117,13 @@ export class UsersService {
         take,
         select: PERSONNEL_RELATIONS_SELECT,
       }),
-      this.prisma.user.count({
-        where: scopeWhere as Prisma.UserWhereInput,
-      }),
+      this.prisma.user.count({ where: scopeWhere as Prisma.UserWhereInput }),
     ]);
 
     const shaped = data.map((u) => this.withMultipleDisabilityTag(u));
-
     return { data: shaped, total, page: dto.page ?? 1, pageSize: take, pageCount: Math.ceil(total / take) };
   }
 
-  // ─── Single ────────────────────────────────────────────────
   async findOne(id: number) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -145,7 +139,7 @@ export class UsersService {
         centerAssignments: {
           orderBy: { assignedAt: 'desc' },
           include: {
-            center:      { select: { id: true, name: true, city: true } },
+            center: { select: { id: true, name: true, city: true } },
             academicYear: { select: { id: true, label: true } },
           },
         },
@@ -159,10 +153,6 @@ export class UsersService {
     return this.withMultipleDisabilityTag(user);
   }
 
-  // ─── Create ────────────────────────────────────────────────
-  // SUPERUSER می‌تواند برای هر مرکزی پرسنل ثبت کند.
-  // CENTER_MANAGER فقط می‌تواند برای مرکز خودش ثبت کند —
-  // هرگز برای مرکز دیگری، حتی با ارسال centerId دیگر.
   async create(dto: CreateUserDto, requester: JwtPayload) {
     const exists = await this.prisma.user.findUnique({ where: { nationalCode: dto.nationalCode } });
     if (exists) throw new ConflictException(`کد ملی "${dto.nationalCode}" قبلاً ثبت شده`);
@@ -174,9 +164,7 @@ export class UsersService {
 
     if (requester.type === UserType.CENTER_MANAGER) {
       if (!dto.centerId || !requester.centerIds?.includes(dto.centerId)) {
-        throw new ForbiddenException(
-          'شما فقط می‌توانید برای مرکز خودتان پرسنل ثبت کنید',
-        );
+        throw new ForbiddenException('شما فقط می‌توانید برای مرکز خودتان پرسنل ثبت کنید');
       }
     }
 
@@ -184,12 +172,8 @@ export class UsersService {
       throw new BadRequestException('برای تخصیص به مرکز، سال تحصیلی الزامی است');
     }
 
-    const canLogin = (
-      [UserType.SUPERUSER, UserType.CENTER_MANAGER] as UserType[]
-    ).includes(dto.userType);
-    const passwordHash = dto.password && canLogin
-      ? await bcrypt.hash(dto.password, 10)
-      : null;
+    const canLogin = ([UserType.SUPERUSER, UserType.CENTER_MANAGER] as UserType[]).includes(dto.userType);
+    const passwordHash = dto.password && canLogin ? await bcrypt.hash(dto.password, 10) : null;
 
     const user = await this.prisma.$transaction(async (tx) => {
       const created = await tx.user.create({
@@ -239,12 +223,7 @@ export class UsersService {
 
       if (dto.centerId && dto.academicYearId) {
         await tx.userCenterAssignment.create({
-          data: {
-            userId: created.id,
-            centerId: dto.centerId,
-            academicYearId: dto.academicYearId,
-            isPrimary: true,
-          },
+          data: { userId: created.id, centerId: dto.centerId, academicYearId: dto.academicYearId, isPrimary: true },
         });
       }
 
@@ -258,9 +237,16 @@ export class UsersService {
     return this.findOne(user.id);
   }
 
-  // ─── Update ────────────────────────────────────────────────
   async update(id: number, dto: UpdateUserDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+
+    // اگر کد ملی تغییر کرده، بررسی تکراری نبودن
+    if (dto.nationalCode && dto.nationalCode !== existing.nationalCode) {
+      const dup = await this.prisma.user.findFirst({
+        where: { nationalCode: dto.nationalCode, NOT: { id } },
+      });
+      if (dup) throw new ConflictException(`کد ملی "${dto.nationalCode}" قبلاً ثبت شده`);
+    }
 
     if (dto.personnelCode) {
       const dupCode = await this.prisma.user.findFirst({
@@ -272,6 +258,7 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: {
+        ...(dto.nationalCode !== undefined && { nationalCode: dto.nationalCode }),
         ...(dto.personnelCode !== undefined && { personnelCode: dto.personnelCode }),
         ...(dto.firstName && { firstName: dto.firstName }),
         ...(dto.lastName && { lastName: dto.lastName }),
@@ -314,14 +301,29 @@ export class UsersService {
     });
   }
 
-  // ─── معلولیت‌ها ────────────────────────────────────────────
+  // ─── مدیریت دسترسی ورود (فقط SUPERUSER) ───────────────────
+  async setCanLogin(id: number, dto: SetCanLoginDto) {
+    const user = await this.findOne(id);
+    const data: Prisma.UserUpdateInput = { canLogin: dto.canLogin };
+
+    // اگر دسترسی خاموش می‌شود، رمز و توکن پاک شود
+    if (!dto.canLogin) {
+      data.refreshToken = null;
+    }
+    // اگر دسترسی روشن می‌شود و رمز جدید داده شده، هش کن
+    if (dto.canLogin && dto.password) {
+      data.passwordHash = await bcrypt.hash(dto.password, 10);
+    }
+
+    return this.prisma.user.update({ where: { id }, data });
+  }
+
   async setDisabilities(userId: number, dto: SetDisabilitiesDto) {
     await this.findOne(userId);
     const rows = await this.disabilityService.setForUser(userId, dto.items);
     return { items: rows, isMultiple: this.disabilityService.isMultiple(rows.length) };
   }
 
-  // ─── Change Password ───────────────────────────────────────
   async changePassword(id: number, dto: ChangePasswordDto) {
     const user = await this.findOne(id);
     if (!user.canLogin) throw new BadRequestException('این کاربر دسترسی لاگین ندارد');
@@ -330,89 +332,52 @@ export class UsersService {
     return { message: 'رمز عبور با موفقیت تغییر کرد' };
   }
 
-  // ─── Assign to Center ──────────────────────────────────────
   async assignCenter(userId: number, dto: AssignCenterDto) {
     await this.findOne(userId);
-
     const center = await this.prisma.center.findUnique({ where: { id: Number(dto.centerId) } });
     if (!center) throw new NotFoundException('مرکز یافت نشد');
-
     const existing = await this.prisma.userCenterAssignment.findFirst({
       where: { userId, centerId: Number(dto.centerId), academicYearId: Number(dto.academicYearId), revokedAt: null },
     });
     if (existing) throw new ConflictException('این کاربر قبلاً به این مرکز در این سال تخصیص یافته');
-
     return this.prisma.userCenterAssignment.create({
-      data: {
-        userId,
-        centerId: Number(dto.centerId),
-        academicYearId: Number(dto.academicYearId),
-        isPrimary: dto.isPrimary ?? true,
-        note: dto.note,
-      },
+      data: { userId, centerId: Number(dto.centerId), academicYearId: Number(dto.academicYearId), isPrimary: dto.isPrimary ?? true, note: dto.note },
     });
   }
 
-  // ─── Transfer (نقل‌وانتقال) ────────────────────────────────
   async transfer(userId: number, dto: TransferDto) {
     await this.findOne(userId);
-
     return this.prisma.$transaction(async (tx) => {
-      // اگر مرکز مبدأ مشخص نشده، از روی تخصیص(های) فعال فعلی کاربر
-      // در همان سال تحصیلی پیدا می‌شود — نیازی نیست کاربر صراحتاً بدهد.
       const currentAssignments = await tx.userCenterAssignment.findMany({
         where: {
-          userId,
-          academicYearId: Number(dto.academicYearId),
-          revokedAt: null,
+          userId, academicYearId: Number(dto.academicYearId), revokedAt: null,
           ...(dto.fromCenterId ? { centerId: Number(dto.fromCenterId) } : {}),
         },
       });
-
       if (dto.fromCenterId && currentAssignments.length === 0) {
         throw new NotFoundException('تخصیص فعلی در مرکز مبدأ یافت نشد');
       }
-
       for (const a of currentAssignments) {
-        await tx.userCenterAssignment.update({
-          where: { id: a.id },
-          data: { revokedAt: new Date() },
-        });
+        await tx.userCenterAssignment.update({ where: { id: a.id }, data: { revokedAt: new Date() } });
       }
-
       return tx.userCenterAssignment.create({
-        data: {
-          userId,
-          centerId: Number(dto.toCenterId),
-          academicYearId: Number(dto.academicYearId),
-          isPrimary: true,
-          note: dto.note,
-        },
+        data: { userId, centerId: Number(dto.toCenterId), academicYearId: Number(dto.academicYearId), isPrimary: true, note: dto.note },
       });
     });
   }
 
-  // ─── Revoke Center ─────────────────────────────────────────
   async revokeCenter(assignmentId: number) {
-    const assignment = await this.prisma.userCenterAssignment.findUnique({
-      where: { id: assignmentId },
-    });
+    const assignment = await this.prisma.userCenterAssignment.findUnique({ where: { id: assignmentId } });
     if (!assignment) throw new NotFoundException('تخصیص یافت نشد');
     if (assignment.revokedAt) throw new BadRequestException('این تخصیص قبلاً لغو شده');
-
-    return this.prisma.userCenterAssignment.update({
-      where: { id: assignmentId },
-      data: { revokedAt: new Date() },
-    });
+    return this.prisma.userCenterAssignment.update({ where: { id: assignmentId }, data: { revokedAt: new Date() } });
   }
 
-  // ─── Deactivate ────────────────────────────────────────────
   async deactivate(id: number) {
     await this.findOne(id);
     return this.prisma.user.update({ where: { id }, data: { isActive: false, canLogin: false } });
   }
 
-  // ─── Excel Export ──────────────────────────────────────────
   async exportExcel(dto: ExcelExportDto, requester: JwtPayload, res: Response) {
     const result = await this.findAll({ ...dto, page: 1, pageSize: 10000 }, requester);
     const flat = (result.data as any[]).map((u) => ({
@@ -424,6 +389,7 @@ export class UsersService {
       genderLabel: u.gender === 'MALE' ? 'مرد' : 'زن',
       userTypeLabel: this.typeLabel(u.userType),
       isActiveLabel: u.isActive ? 'فعال' : 'غیرفعال',
+      canLoginLabel: u.canLogin ? 'بله' : 'خیر',
       jobPositionLabel: u.jobPosition?.label ?? '—',
       employmentTypeLabel: u.employmentType?.label ?? '—',
       employmentCategoryLabel: u.employmentCategory?.label ?? '—',
@@ -431,10 +397,7 @@ export class UsersService {
       maritalStatusLabel: u.maritalStatus?.label ?? '—',
       districtLabel: u.district?.label ?? '—',
       physicalStatusLabel: u.physicalStatus?.label ?? '—',
-      disabilityLabels: (u.disabilities ?? [])
-        .map((d: any) => d.disabilityType?.label)
-        .filter(Boolean)
-        .join('، ') || '—',
+      disabilityLabels: (u.disabilities ?? []).map((d: any) => d.disabilityType?.label).filter(Boolean).join('، ') || '—',
       isMultipleDisabilityLabel: u.isMultipleDisability ? 'بله' : 'خیر',
       birthDateShamsi:
         u.birthYearShamsi && u.birthMonth && u.birthDay
@@ -444,7 +407,6 @@ export class UsersService {
     await this.excelExport.export({ data: flat, columns: dto.columns, sheetName: dto.sheetName, filename: dto.filename ?? 'personnel', res });
   }
 
-  // معلولیت‌های یک نفر را همراه با تگ خودکار «چندمعلولیتی» برمی‌گرداند
   private withMultipleDisabilityTag<T extends { disabilities?: unknown[] }>(user: T) {
     const count = user.disabilities?.length ?? 0;
     return { ...user, isMultipleDisability: this.disabilityService.isMultiple(count) };
@@ -452,8 +414,7 @@ export class UsersService {
 
   private typeLabel(t: string) {
     const m: Record<string, string> = {
-      SUPERUSER: 'سوپریوزر', CENTER_MANAGER: 'مدیر مرکز',
-      TEACHER: 'معلم', STAFF: 'کارمند', STUDENT: 'دانش‌آموز',
+      SUPERUSER: 'سوپریوزر', CENTER_MANAGER: 'مدیر مرکز', TEACHER: 'معلم', STAFF: 'کارمند', STUDENT: 'دانش‌آموز',
     };
     return m[t] ?? t;
   }

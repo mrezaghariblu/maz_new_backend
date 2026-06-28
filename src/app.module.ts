@@ -15,6 +15,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { StatusModule } from './status/status.module';
 import { StudentsModule } from './students/students.module';
 import { UsersModule } from './users/users.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { SmartClassModule } from './smart-class/smart-class.module';
 
 @Module({
   imports: [
@@ -32,6 +34,8 @@ import { UsersModule } from './users/users.module';
     StatusModule,
     StudentsModule,
     UsersModule,
+    AnalyticsModule,
+    SmartClassModule,
   ],
   controllers: [AppController],
   providers: [AppService],

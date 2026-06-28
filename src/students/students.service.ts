@@ -17,7 +17,6 @@ import {
 } from './dto/student.dto';
 import { AssignDisabilityDto } from '../users/dto/user.dto';
 
-// کدهای معلولیت مرتبط با هر track پایه
 const TRACK_DISABILITY_CODES: Record<string, string[]> = {
   INTELLECTUAL_AUTISM: ['INTELLECTUAL', 'AUTISM'],
   SENSORY_MOTOR:       ['PHYSICAL_MOTOR', 'VISUAL', 'HEARING'],
@@ -60,7 +59,6 @@ export class StudentsService {
     private disabilityService: DisabilityService,
   ) {}
 
-  // ─── List ──────────────────────────────────────────────────
   async findAll(dto: SmartFilterDto, requester: JwtPayload) {
     const { where, orderBy, skip, take } = this.filterBuilder.build(dto);
 
@@ -76,7 +74,6 @@ export class StudentsService {
         skip, take,
         include: {
           ...STUDENT_INCLUDE,
-          // معلم و کلاس (برای ابتدایی و پیش‌دبستانی)
           classAssignments: {
             where: { revokedAt: null },
             include: {
@@ -99,32 +96,41 @@ export class StudentsService {
       this.prisma.student.count({ where: scopeWhere as any }),
     ]);
 
-    return {
-      data: data.map(s => this.withComputed(s)),
-      total,
-      page: dto.page ?? 1,
-      pageSize: take,
-      pageCount: Math.ceil(total / take),
-    };
+    const shaped = data.map(s => this.withComputed(s));
+    return { data: shaped, total, page: dto.page ?? 1, pageSize: take, pageCount: Math.ceil(total / take) };
   }
 
-  // ─── Single ────────────────────────────────────────────────
   async findOne(id: number) {
-    const s = await this.prisma.student.findUnique({
+    const student = await this.prisma.student.findUnique({
       where: { id },
       include: {
         ...STUDENT_INCLUDE,
+        classAssignments: {
+          orderBy: { enrolledAt: 'desc' },
+          include: {
+            classRoom: {
+              select: {
+                id: true, name: true,
+                teacherAssignments: {
+                  where: { revokedAt: null },
+                  include: { user: { select: { id: true, firstName: true, lastName: true } }, subject: true },
+                },
+              },
+            },
+            grade: true,
+            academicYear: { select: { id: true, label: true } },
+          },
+        },
         studentStatusHistory: {
           orderBy: { effectiveDate: 'desc' },
           include: { statusType: true, academicYear: { select: { id: true, label: true } } },
         },
       },
     });
-    if (!s) throw new NotFoundException('دانش‌آموز یافت نشد');
-    return this.withComputed(s);
+    if (!student) throw new NotFoundException('دانش‌آموز یافت نشد');
+    return this.withComputed(student);
   }
 
-  // ─── Create ────────────────────────────────────────────────
   async create(dto: CreateStudentDto, requester: JwtPayload) {
     if (requester.type === UserType.CENTER_MANAGER) {
       if (!dto.centerId || !requester.centerIds?.includes(dto.centerId)) {
@@ -149,9 +155,17 @@ export class StudentsService {
     return this.findOne(student.id);
   }
 
-  // ─── Update ────────────────────────────────────────────────
   async update(id: number, dto: UpdateStudentDto) {
-    await this.findOne(id);
+    const existing = await this.findOne(id);
+
+    // اگر کد ملی تغییر کرده، بررسی تکراری نبودن
+    if (dto.nationalCode && dto.nationalCode !== existing.nationalCode) {
+      const dup = await this.prisma.student.findFirst({
+        where: { nationalCode: dto.nationalCode, NOT: { id } },
+      });
+      if (dup) throw new ConflictException(`کد ملی "${dto.nationalCode}" قبلاً ثبت شده`);
+    }
+
     const { ...data } = dto;
     return this.prisma.student.update({ where: { id }, data: data as any });
   }
@@ -161,14 +175,12 @@ export class StudentsService {
     return this.prisma.student.update({ where: { id }, data: { isActive: false } });
   }
 
-  // ─── معلولیت‌ها ────────────────────────────────────────────
   async setDisabilities(studentId: number, items: AssignDisabilityDto[]) {
     await this.findOne(studentId);
     const rows = await this.disabilityService.setForStudent(studentId, items);
     return { items: rows, isMultiple: this.disabilityService.isMultiple(rows.length) };
   }
 
-  // ─── وسایل کمکی ───────────────────────────────────────────
   async setAssistiveDevices(studentId: number, dto: SetAssistiveDevicesDto) {
     const devices = await this.prisma.lookupValue.findMany({
       where: { id: { in: dto.ids }, groupKey: 'ASSISTIVE_DEVICE', isActive: true },
@@ -190,7 +202,6 @@ export class StudentsService {
     });
   }
 
-  // ─── تخصیص به کلاس ────────────────────────────────────────
   async assignToClass(studentId: number, dto: AssignToClassDto, requester: JwtPayload) {
     const student = await this.findOne(studentId);
 
@@ -206,11 +217,9 @@ export class StudentsService {
       }
     }
 
-    // بررسی اینکه پایه‌ی انتخابی توی این کلاس هست
     const gradeInClass = classRoom.classGrades.find(cg => cg.gradeId === dto.gradeId);
     if (!gradeInClass) throw new BadRequestException('این پایه در کلاس انتخابی وجود ندارد');
 
-    // هشدار track: اگه پایه track خاص داره ولی دانش‌آموز معلولیت منطبق نداره
     const warnings: string[] = [];
     const gradeTrack = gradeInClass.grade.track;
     if (gradeTrack !== 'NORMAL') {
@@ -234,12 +243,7 @@ export class StudentsService {
     if (dup) throw new ConflictException('این دانش‌آموز قبلاً در این سال تحصیلی به یک کلاس تخصیص یافته');
 
     const assignment = await this.prisma.studentClassAssignment.create({
-      data: {
-        studentId,
-        classRoomId: dto.classRoomId,
-        gradeId: dto.gradeId,
-        academicYearId: dto.academicYearId,
-      },
+      data: { studentId, classRoomId: dto.classRoomId, gradeId: dto.gradeId, academicYearId: dto.academicYearId },
     });
 
     return { assignment, warnings };
@@ -255,7 +259,6 @@ export class StudentsService {
     });
   }
 
-  // ─── تصمیم ارتقا ──────────────────────────────────────────
   async recordPromotion(studentId: number, dto: PromotionDecisionDto, requester: JwtPayload) {
     await this.findOne(studentId);
     const dup = await this.prisma.studentPromotionDecision.findUnique({
@@ -276,54 +279,50 @@ export class StudentsService {
     });
   }
 
-  // ─── Excel export ──────────────────────────────────────────
+  // ─── آمار دانش‌آموزان کلاسبندی‌نشده (برای داشبورد) ──────
+  async getUnassignedCount(centerId: number, academicYearId: number): Promise<number> {
+    return this.prisma.student.count({
+      where: {
+        centerId,
+        isActive: true,
+        classAssignments: {
+          none: { academicYearId, revokedAt: null },
+        },
+      },
+    });
+  }
+
   async exportExcel(dto: ExcelExportDto, requester: JwtPayload, res: Response) {
     const result = await this.findAll({ ...dto, page: 1, pageSize: 10000 }, requester);
-    const flat = (result.data as any[]).map(s => ({
+    const flat = (result.data as any[]).map((s) => ({
       ...s,
       fullName: `${s.firstName} ${s.lastName}`,
-      age: s.age ?? '—',
       genderLabel: s.gender === 'MALE' ? 'پسر' : 'دختر',
+      isActiveLabel: s.isActive ? 'فعال' : 'غیرفعال',
       educationLevelLabel: s.educationLevel?.label ?? '—',
       gradeLabel: s.grade?.label ?? '—',
       centerName: s.center?.name ?? '—',
       districtLabel: s.district?.label ?? '—',
-      currentStatus: s.studentStatusHistory[0]?.statusType?.label ?? '—',
-      disabilityLabels: (s.disabilities ?? []).map((d: any) => d.disabilityType?.label).join('، ') || '—',
+      currentStatus: s.studentStatusHistory?.[0]?.statusType?.label ?? '—',
+      disabilityLabels: (s.disabilities ?? []).map((d: any) => d.disabilityType?.label).filter(Boolean).join('، ') || '—',
       isMultipleDisabilityLabel: s.isMultipleDisability ? 'بله' : 'خیر',
-      birthShamsi: s.birthYearShamsi && s.birthMonth && s.birthDay
-        ? `${s.birthYearShamsi}/${String(s.birthMonth).padStart(2,'0')}/${String(s.birthDay).padStart(2,'0')}`
-        : '—',
-      currentTeacher: s.classAssignments?.[0]?.classRoom?.teacherAssignments?.[0]?.user
-        ? `${s.classAssignments[0].classRoom.teacherAssignments[0].user.firstName} ${s.classAssignments[0].classRoom.teacherAssignments[0].user.lastName}`
-        : '—',
-      currentClassName: s.classAssignments?.[0]?.classRoom?.name ?? '—',
+      birthShamsi:
+        s.birthYearShamsi && s.birthMonth && s.birthDay
+          ? `${s.birthYearShamsi}/${String(s.birthMonth).padStart(2, '0')}/${String(s.birthDay).padStart(2, '0')}`
+          : '—',
     }));
-    await this.excelExport.export({
-      data: flat, columns: dto.columns, sheetName: dto.sheetName,
-      filename: dto.filename ?? 'students', res,
-    });
+    await this.excelExport.export({ data: flat, columns: dto.columns, sheetName: dto.sheetName, filename: dto.filename ?? 'students', res });
   }
 
-  // ─── محاسبات خودکار ───────────────────────────────────────
   private withComputed(s: any) {
-    const count = s.disabilities?.length ?? 0;
-    const age = this.calcAge(s.birthYearShamsi, s.birthMonth, s.birthDay);
-    return {
-      ...s,
-      age,
-      isMultipleDisability: this.disabilityService.isMultiple(count),
-    };
-  }
-
-  // محاسبه‌ی سن تقریبی از تاریخ شمسی (بدون نیاز به کتابخانه)
-  private calcAge(year?: number, month?: number, day?: number): number | null {
-    if (!year) return null;
-    // تبدیل تقریبی: هر سال شمسی ≈ 365.25 روز، مبدأ شمسی = 1348/10/11 میلادی
-    const shamsiEpoch = 621.5; // آفست تقریبی سال
-    const nowGregorian = new Date();
-    const nowYear = nowGregorian.getFullYear() + nowGregorian.getMonth() / 12;
-    const birthGregorian = (year + (month ?? 1) / 12) + shamsiEpoch;
-    return Math.floor(nowYear - birthGregorian + shamsiEpoch - shamsiEpoch);
+    const disabilityCount = s.disabilities?.length ?? 0;
+    const now = new Date();
+    let age: number | null = null;
+    if (s.birthYearShamsi) {
+      // تبدیل تقریبی: سال شمسی به میلادی (سال شمسی + 621)
+      const birthYear = s.birthYearShamsi + 621;
+      age = now.getFullYear() - birthYear;
+    }
+    return { ...s, isMultipleDisability: disabilityCount > 1, age };
   }
 }

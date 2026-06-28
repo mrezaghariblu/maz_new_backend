@@ -12,10 +12,10 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/auth.service';
 import { AuditEntity, AuditAction, AuditInterceptor } from '../common/audit/audit.interceptor';
 import { SmartFilterDto, ExcelExportDto } from '../common/filters/smart-filter.dto';
-import { UsersService }     from './users.service';
+import { UsersService } from './users.service';
 import {
   CreateUserDto, UpdateUserDto, ChangePasswordDto,
-  AssignCenterDto, TransferDto, SetDisabilitiesDto,
+  AssignCenterDto, TransferDto, SetDisabilitiesDto, SetCanLoginDto,
 } from './dto/user.dto';
 import { UserType } from '@prisma/client';
 
@@ -40,8 +40,6 @@ export class UsersController {
   @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
   findOne(@Param('id') id: string) { return this.svc.findOne(+id); }
 
-  // ثبت پرسنل: فقط سوپریوزر و مدیر مرکز — مدیر مرکز فقط برای مرکز خودش
-  // (CenterScopeGuard از body.centerId استفاده می‌کند؛ بررسی دقیق‌تر در سرویس انجام می‌شود)
   @Post()
   @UseGuards(CenterScopeGuard)
   @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
@@ -59,7 +57,15 @@ export class UsersController {
     return this.svc.update(+id, dto);
   }
 
-  // جایگزینی کامل لیست معلولیت‌های یک پرسنل
+  // ─── مدیریت دسترسی ورود — فقط SUPERUSER ──────────────────
+  @Patch(':id/can-login')
+  @Roles(UserType.SUPERUSER)
+  @UseInterceptors(AuditInterceptor)
+  @AuditEntity('User') @AuditAction('UPDATE')
+  setCanLogin(@Param('id') id: string, @Body() dto: SetCanLoginDto) {
+    return this.svc.setCanLogin(+id, dto);
+  }
+
   @Put(':id/disabilities')
   @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
   @UseInterceptors(AuditInterceptor)
