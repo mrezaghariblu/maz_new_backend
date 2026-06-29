@@ -74,9 +74,15 @@ export class ClassesController {
     return this.svc.revokeTeacherAssignment(+id, user);
   }
 
+  @Delete('teacher-assignments/:assignmentId')
+  @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
+  deleteTeacher(@Param('assignmentId') id: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.revokeTeacherAssignment(+id, user);
+  }
+
   @Delete(':id')
   @Roles(UserType.SUPERUSER, UserType.CENTER_MANAGER)
-  deactivate(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
-    return this.svc.deactivate(+id, user);
+  delete(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.svc.deleteClass(+id, user);
   }
 }

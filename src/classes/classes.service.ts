@@ -64,7 +64,16 @@ export class ClassesService {
   async findOne(id: number, requester: JwtPayload) {
     const row = await this.prisma.classRoom.findUnique({
       where: { id },
-      include: CLASS_ROOM_INCLUDE,
+      include: {
+        ...CLASS_ROOM_INCLUDE,
+        studentAssignments: {
+          where: { revokedAt: null },
+          include: {
+            student: { select: { id: true, firstName: true, lastName: true, gender: true } },
+            grade: { select: { id: true, label: true } },
+          },
+        },
+      },
     });
     if (!row) throw new NotFoundException('کلاس یافت نشد');
     this.assertCenterScope(requester, row.centerId);
@@ -151,6 +160,12 @@ export class ClassesService {
         subjectId: dto.subjectId,
       },
     });
+  }
+
+  async deleteClass(id: number, requester: JwtPayload) {
+    const row = await this.findOne(id, requester);
+    this.assertCenterScope(requester, row.centerId);
+    return this.prisma.classRoom.delete({ where: { id } });
   }
 
   async revokeTeacherAssignment(assignmentId: number, requester: JwtPayload) {

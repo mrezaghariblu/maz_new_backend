@@ -16,7 +16,6 @@ import {
 
 @Injectable()
 export class FilterBuilderService {
-
   /**
    * ورودی: SmartFilterDto
    * خروجی: { where, orderBy, skip, take } — آماده برای Prisma
@@ -41,13 +40,26 @@ export class FilterBuilderService {
   }
 
   private buildCondition(f: FilterConditionDto): Record<string, any> | null {
+    // پشتیبانی از فیلدهای تودرتو مثل 'grade.label' یا 'center.name'
+    if (f.field.includes('.')) {
+      const [relation, field] = f.field.split('.', 2);
+      const innerFilter = this.buildCondition({ ...f, field });
+      if (!innerFilter) return null;
+      return { [relation]: innerFilter };
+    }
     switch (f.fieldType) {
-      case 'string':  return this.buildString(f);
-      case 'number':  return this.buildNumber(f);
-      case 'date':    return this.buildDate(f);
-      case 'boolean': return this.buildBoolean(f);
-      case 'enum':    return { [f.field]: { equals: f.value } };
-      default:        return null;
+      case 'string':
+        return this.buildString(f);
+      case 'number':
+        return this.buildNumber(f);
+      case 'date':
+        return this.buildDate(f);
+      case 'boolean':
+        return this.buildBoolean(f);
+      case 'enum':
+        return { [f.field]: { equals: f.value } };
+      default:
+        return null;
     }
   }
 
@@ -71,7 +83,9 @@ export class FilterBuilderService {
       case StringOperator.IS_EMPTY:
         return { OR: [{ [f.field]: null }, { [f.field]: '' }] };
       case StringOperator.IS_NOT_EMPTY:
-        return { AND: [{ NOT: { [f.field]: null } }, { NOT: { [f.field]: '' } }] };
+        return {
+          AND: [{ NOT: { [f.field]: null } }, { NOT: { [f.field]: '' } }],
+        };
       default:
         return null;
     }
@@ -97,7 +111,12 @@ export class FilterBuilderService {
       case NumberOperator.BETWEEN:
         return { [f.field]: { gte: v, lte: Number(f.valueTo) } };
       case NumberOperator.NOT_BETWEEN:
-        return { OR: [{ [f.field]: { lt: v } }, { [f.field]: { gt: Number(f.valueTo) } }] };
+        return {
+          OR: [
+            { [f.field]: { lt: v } },
+            { [f.field]: { gt: Number(f.valueTo) } },
+          ],
+        };
       case NumberOperator.IS_NULL:
         return { [f.field]: null };
       case NumberOperator.IS_NOT_NULL:
@@ -114,11 +133,14 @@ export class FilterBuilderService {
     const now = new Date();
 
     switch (f.operator as DateOperator) {
-      case DateOperator.EQUALS:
+      case DateOperator.EQUALS: {
         if (!v) return null;
-        const dayStart = new Date(v); dayStart.setHours(0, 0, 0, 0);
-        const dayEnd   = new Date(v); dayEnd.setHours(23, 59, 59, 999);
+        const dayStart = new Date(v);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(v);
+        dayEnd.setHours(23, 59, 59, 999);
         return { [f.field]: { gte: dayStart, lte: dayEnd } };
+      }
       case DateOperator.BEFORE:
         return { [f.field]: { lt: v } };
       case DateOperator.AFTER:
@@ -126,9 +148,19 @@ export class FilterBuilderService {
       case DateOperator.BETWEEN:
         return { [f.field]: { gte: v, lte: new Date(String(f.valueTo)) } };
       case DateOperator.THIS_YEAR:
-        return { [f.field]: { gte: new Date(now.getFullYear(), 0, 1), lte: new Date(now.getFullYear(), 11, 31) } };
+        return {
+          [f.field]: {
+            gte: new Date(now.getFullYear(), 0, 1),
+            lte: new Date(now.getFullYear(), 11, 31),
+          },
+        };
       case DateOperator.THIS_MONTH:
-        return { [f.field]: { gte: new Date(now.getFullYear(), now.getMonth(), 1), lte: new Date(now.getFullYear(), now.getMonth() + 1, 0) } };
+        return {
+          [f.field]: {
+            gte: new Date(now.getFullYear(), now.getMonth(), 1),
+            lte: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+          },
+        };
       case DateOperator.IS_NULL:
         return { [f.field]: null };
       case DateOperator.IS_NOT_NULL:
@@ -142,9 +174,12 @@ export class FilterBuilderService {
 
   private buildBoolean(f: FilterConditionDto) {
     switch (f.operator as BooleanOperator) {
-      case BooleanOperator.IS_TRUE:  return { [f.field]: true };
-      case BooleanOperator.IS_FALSE: return { [f.field]: false };
-      default: return null;
+      case BooleanOperator.IS_TRUE:
+        return { [f.field]: true };
+      case BooleanOperator.IS_FALSE:
+        return { [f.field]: false };
+      default:
+        return null;
     }
   }
 }
